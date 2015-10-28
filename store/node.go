@@ -4,6 +4,13 @@ import (
 	"syscall"
 )
 
+/*
+这个文件里完成具体的数据存储工作。
+只支持两种操作：update(include add) & del
+update: keep=true
+del: 	keep=false
+*/
+
 var emptyDir = node{V: "", Ds: make(map[string]node), Rev: Dir}
 
 const ErrorPath = "/ctl/err"
@@ -31,6 +38,7 @@ func (n node) readdir() []string {
 	return names
 }
 
+// 递归之， 找给定的节点
 func (n node) at(parts []string) (node, error) {
 	switch len(parts) {
 	case 0:
@@ -46,6 +54,9 @@ func (n node) at(parts []string) (node, error) {
 	panic("unreachable")
 }
 
+// 如果是Dir，返回目录内文件
+// 如果时File，返回节点Value
+// m.Rev本身自带含义的
 func (n node) get(parts []string) ([]string, int64) {
 	switch m, err := n.at(parts); err {
 	case syscall.ENOENT:
@@ -64,6 +75,8 @@ func (n node) Get(path string) ([]string, int64) {
 	return n.get(split(path))
 }
 
+// Stat 命令 Dir 返回目录下文件数
+// File 返回 Value 长度
 func (n node) stat(parts []string) (int32, int64) {
 	switch m, err := n.at(parts); err {
 	case syscall.ENOENT:
@@ -102,16 +115,20 @@ func (n node) set(parts []string, v string, rev int64, keep bool) (node, bool) {
 	}
 
 	n.Ds = copyMap(n.Ds)
+	// copy & recursive
 	p, ok := n.Ds[parts[0]].set(parts[1:], v, rev, keep)
 	if ok {
 		n.Ds[parts[0]] = p
 	} else {
+		// <del>失败则删除当前节点？误删？</del>
 		delete(n.Ds, parts[0])
 	}
 	n.Rev = Dir
 	return n, len(n.Ds) > 0
 }
-
+// set /path/message hello
+// 	=>
+// set /path key=message value=hello ??
 func (n node) setp(k, v string, rev int64, keep bool) node {
 	if err := checkPath(k); err != nil {
 		return n
@@ -121,6 +138,8 @@ func (n node) setp(k, v string, rev int64, keep bool) node {
 	return n
 }
 
+// mut是一个复杂的字符串：
+//		ev.Path, ev.Body, rev, keep, ev.Err = decode(mut)
 func (n node) apply(seqn int64, mut string) (rep node, ev Event) {
 	ev.Seqn, ev.Rev, ev.Mut = seqn, seqn, mut
 	if mut == Nop {
@@ -134,8 +153,12 @@ func (n node) apply(seqn int64, mut string) (rep node, ev Event) {
 	var rev int64
 	var keep bool
 	ev.Path, ev.Body, rev, keep, ev.Err = decode(mut)
+	// value == "" return keep=false
+	// value != "" return keep=true
 
 	if ev.Err == nil && keep {
+		// split() 里面假设路径以\开头， 但是在那里检测的？
+		// 这个路径上的节点必须都是DIR
 		components := split(ev.Path)
 		for i := 0; i < len(components)-1; i++ {
 			_, dirRev := n.get(components[0 : i+1])

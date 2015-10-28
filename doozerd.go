@@ -26,6 +26,7 @@ func (a *strings) String() string {
 	return fmt.Sprint(*a)
 }
 
+// attach() 相比 buri 优先级更高。
 var (
 	laddr       = flag.String("l", "127.0.0.1:8046", "The address to bind to.")
 	aaddrs      = strings{}
@@ -41,6 +42,8 @@ var (
 	keyFile     = flag.String("tlskey", "", "TLS private key")
 )
 
+// 可以设置读写权限密钥
+// 和只读权限密钥
 var (
 	rwsk = os.Getenv("DOOZER_RWSECRET")
 	rosk = os.Getenv("DOOZER_ROSECRET")

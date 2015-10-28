@@ -39,6 +39,7 @@ func elect(name, id, laddr string, b *doozer.Conn) *doozer.Conn {
 	}
 
 	// fight to be the seed
+	// 新建节点，不应该存在，删除的地方是？
 	_, err = b.Set("/ctl/boot/"+name, 0, []byte(id))
 	if err, ok := err.(*doozer.Error); ok && err.Err == doozer.ErrOldRev {
 		// we lost, lookup addresses again
@@ -73,6 +74,8 @@ func lookupAndAttach(b *doozer.Conn, name string) *doozer.Conn {
 	return nil
 }
 
+// cluster-name, addrs...
+// 返回第一个有效的“连接”
 func attach(name string, addrs []string) *doozer.Conn {
 	ch := make(chan *doozer.Conn, 1)
 
@@ -94,6 +97,8 @@ func attach(name string, addrs []string) *doozer.Conn {
 
 // IsCal checks if addr is a CAL in the cluster named name.
 // Returns a client if so, nil if not.
+// 判断节点是不是存活可连接(?)
+// 建立链接到 /ctl/cal/XXX 下的主机连接
 func isCal(name, addr string) (*doozer.Conn, error) {
 	c, err := doozer.Dial(addr)
 	if err != nil {
@@ -106,6 +111,8 @@ func isCal(name, addr string) (*doozer.Conn, error) {
 	}
 
 	v, _, _ := c.Get("/ctl/name", nil)
+	// 怎么个意思？
+	// 判断是不是属于同一个集群？
 	if string(v) != name {
 		return nil, nil
 	}
@@ -125,6 +132,7 @@ func isCal(name, addr string) (*doozer.Conn, error) {
 	}
 
 	for _, cal := range cals {
+		// 在这个字段保存了主机ID
 		body, _, err := c.Get("/ctl/cal/"+cal, nil)
 		if err != nil || len(body) == 0 {
 			continue
@@ -172,6 +180,7 @@ func lookup(b *doozer.Conn, name string) (as []string) {
 	return as
 }
 
+// 随机生成本机ID，80BIT，16字节可见字符名称
 func randId() string {
 	const bits = 80 // enough for 10**8 ids with p(collision) < 10**-8
 	rnd := make([]byte, bits/8)

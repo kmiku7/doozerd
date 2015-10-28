@@ -58,6 +58,7 @@ func (t *txn) get() {
 		return
 	}
 
+	// 所以对于 client & server 之间的一个（长）连接，多个请求之间是可以复用的。
 	go func() {
 		g, err := t.getter()
 		if err != nil {
@@ -180,6 +181,7 @@ func (t *txn) stat() {
 	}()
 }
 
+// 字母顺序，这个接口什么用呢？
 func (t *txn) getdir() {
 	if !t.c.raccess {
 		t.respondOsError(syscall.EACCES)
@@ -339,6 +341,7 @@ func (t *txn) respondErrCode(e response_Err) {
 	t.respond()
 }
 
+// 见 conn.go serve() 函数，txn是一次性的。so，这里是有默认值的。
 func (t *txn) respond() {
 	t.resp.Tag = t.req.Tag
 	err := t.c.write(&t.resp)
@@ -347,6 +350,7 @@ func (t *txn) respond() {
 	}
 }
 
+// 获取一次存取的快照
 func (t *txn) getter() (store.Getter, error) {
 	if t.req.Rev == nil {
 		_, g := t.c.st.Snap()

@@ -43,7 +43,21 @@ func (p *proposer) Propose(v []byte) (e store.Event) {
 	}
 	return
 }
-
+//	peer.Main(*name, id, *buri, rwsk, rosk, cl, usock, tsock, wsock, ns(*pi), ns(*fd), ns(*kt), *hi)
+// func Main(
+//		clusterName, 
+//		self, 
+//		buri, 
+//		rwsk, 
+//		rosk string, 
+//		cl *doozer.Conn, 
+//		udpConn *net.UDPConn, 
+//		listener, 
+//		webListener net.Listener, 
+//		pulseInterval, 
+//		fillDelay, 
+//		kickTimeout int64, 
+//		hi int64) {
 func Main(clusterName, self, buri, rwsk, rosk string, cl *doozer.Conn, udpConn *net.UDPConn, listener, webListener net.Listener, pulseInterval, fillDelay, kickTimeout int64, hi int64) {
 	listenAddr := listener.Addr().String()
 
@@ -81,6 +95,8 @@ func Main(clusterName, self, buri, rwsk, rosk string, cl *doozer.Conn, udpConn *
 		hostname = "unknown"
 	}
 
+	// 这两段是初始化逻辑
+	// 首个节点
 	if cl == nil { // we are the only node in a new cluster
 		set(st, "/ctl/name", clusterName, store.Missing)
 		set(st, "/ctl/node/"+self+"/addr", listenAddr, store.Missing)

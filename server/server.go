@@ -26,12 +26,15 @@ func ListenAndServe(l net.Listener, canWrite chan bool, st *store.Store, p conse
 		}
 
 		// has this server become writable?
+		// 一次性的？
+		// server 只会cong readonly 变为 writable， 不会再变回 readonly
 		select {
 		case w = <-canWrite:
 			canWrite = nil
 		default:
 		}
 
+		// 在一个长连接内，server 的可读性是不会变的，即：是不会从 readonly 变为 writable。
 		go serve(c, st, p, w, rwsk, rosk, self)
 	}
 }

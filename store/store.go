@@ -9,6 +9,7 @@ import (
 )
 
 // Special values for a revision.
+// special 在 用来表示节点类型
 const (
 	Missing = int64(-iota)
 	Clobber
@@ -39,14 +40,20 @@ func mustBuildRe(p string) *regexp.Regexp {
 // errors that occur will be written to ErrorPath. Duplicate operations at a
 // given position are sliently ignored.
 type Store struct {
+	// 新操作
 	Ops     chan<- Op
 	Seqns   <-chan int64
 	Waiting <-chan int
+	// 新 watcher
 	watchCh chan *watch
+	// 还未触发的 watcher, 未来触发
 	watches []*watch
+	// 未来的操作, 版本号 >= targetVer 时才触发。
 	todo    []Op
+	// 里面放存储
 	state   *state
 	head    int64
+	// 历史版本数据
 	log     map[int64]Event
 	cleanCh chan int64
 	flush   chan bool
@@ -57,6 +64,7 @@ type Store struct {
 // If Mut is Nop, no change will be made, but an event will still be sent.
 type Op struct {
 	Seqn int64
+	// Mut 是一个复杂的字符串
 	Mut  string
 }
 
@@ -86,7 +94,7 @@ func New() *Store {
 		watchCh: make(chan *watch),
 		watches: []*watch{},
 		state:   &state{0, emptyDir},
-		log:     map[int64]Event{},
+		log:     map[int64]Event{},			// 历史版本数据
 		cleanCh: make(chan int64),
 		flush:   make(chan bool),
 	}
@@ -95,6 +103,7 @@ func New() *Store {
 	return st
 }
 
+// path 末尾不带斜线
 func split(path string) []string {
 	if path == "/" {
 		return []string{}
@@ -106,6 +115,7 @@ func join(parts []string) string {
 	return "/" + strings.Join(parts, "/")
 }
 
+// 限制path里出现的字符
 func checkPath(k string) error {
 	if !pathRe.MatchString(k) {
 		return ErrBadPath
@@ -113,6 +123,8 @@ func checkPath(k string) error {
 	return nil
 }
 
+// 跟猜测的一样。。。
+// 这里说的 rev == Clobber 指的 函数参数为 Clobber 而不是 node.Rev==Clobber 吧
 // Returns a mutation that can be applied to a `Store`. The mutation will set
 // the contents of the file at `path` to `body` iff `rev` is greater than
 // of equal to the file's revision at the time of application, with
@@ -139,6 +151,7 @@ func EncodeDel(path string, rev int64) (mutation string, err error) {
 // MustEncodeSet is like EncodeSet but panics if the mutation cannot be
 // encoded. It simplifies safe initialization of global variables holding
 // mutations.
+// 唯一可能失败的点在于path
 func MustEncodeSet(path, body string, rev int64) (mutation string) {
 	m, err := EncodeSet(path, body, rev)
 	if err != nil {
@@ -158,6 +171,10 @@ func MustEncodeDel(path string, rev int64) (mutation string) {
 	return m
 }
 
+// Mut 串结构：
+//	REV:KEY=VALUE
+//	REV:KEY		这是一个删除操作？？？
+// keep 是个什么含义？
 func decode(mutation string) (path, v string, rev int64, keep bool, err error) {
 	cm := strings.SplitN(mutation, ":", 2)
 
@@ -186,6 +203,8 @@ func decode(mutation string) (path, v string, rev int64, keep bool, err error) {
 	panic("unreachable")
 }
 
+// watch 是一次性的
+// 看调用方，历史版本从小版本号开始比较
 func (st *Store) notify(e Event, ws []*watch) (nws []*watch) {
 	for _, w := range ws {
 		if e.Seqn >= w.rev && w.glob.Match(e.Path) {
@@ -218,11 +237,19 @@ func (st *Store) process(ops <-chan Op, seqns chan<- int64, watches chan<- int) 
 				return
 			}
 
+			// 版本好虽然 “挂” 在单个节点上， 但他是一个全局的序列化号码，也就是说多个客户端的多个操作之间应该是串行的。
+			// 因此 读多于写 的场景下使用doozer会更好一些。
 			if a.Seqn > ver {
 				st.todo = append(st.todo, a)
 			}
+			// seqn <= ver 的直接丢弃？？
 		case w := <-st.watchCh:
 			n, ws := w.rev, []*watch{w}
+			// 为何要封装到数组里，这段代码好奇怪。
+			// if n < st.head {
+			//		ws = []*watch{}
+			//		n = n +1
+			// }
 			for ; len(ws) > 0 && n < st.head; n++ {
 				ws = []*watch{}
 			}
@@ -255,6 +282,7 @@ func (st *Store) process(ops <-chan Op, seqns chan<- int64, watches chan<- int) 
 				break
 			}
 
+			// slice 的副作用
 			st.todo = append(st.todo[:i], st.todo[i+1:]...)
 			if t.Seqn < ver+1 {
 				continue
@@ -278,6 +306,7 @@ func (st *Store) process(ops <-chan Op, seqns chan<- int64, watches chan<- int) 
 	}
 }
 
+// Find Min Value
 func firstTodo(a []Op) (pos int) {
 	n := int64(math.MaxInt64)
 	pos = -1
@@ -294,6 +323,7 @@ func firstTodo(a []Op) (pos int) {
 func (st *Store) Snap() (ver int64, g Getter) {
 	// WARNING: Be sure to read the pointer value of st.state only once. If you
 	// need multiple accesses, copy the pointer first.
+	// 这是说 st.state.ver, st.state.root 有可能返回不匹配的值？
 	p := st.state
 
 	return p.ver, p.root
